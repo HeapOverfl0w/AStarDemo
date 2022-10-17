@@ -1,0 +1,252 @@
+<html>
+    <style>
+        #buttonContainer {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+        }
+
+        button {
+            margin: 5px;
+        }
+
+        body {
+            margin: 0;
+        }
+    </style>
+    <body>
+        <canvas id="scene"></canvas>
+        <div id="buttonContainer">
+            <button id="wallBtn">Wall</button>
+            <button id="floorBtn">Floor</button>
+            <button id="startBtn">Start</button>
+            <button id="endBtn">End</button>
+            <button id="calculateBtn">Calculate</button>
+        </div>
+    </body>
+    <script>
+        const GRID_WIDTH = 50;
+        const GRID_HEIGHT = 50;
+        const FLOOR = 0;
+        const START = 1;
+        const END = 2;
+        const WALL = 3;
+        const WALKED = 4;
+        const GOAL = 5;
+        const canvas = document.getElementById("scene");
+        const context = canvas.getContext('2d');
+        let map = [];
+        let solution = [];
+        let placementMode = FLOOR;
+        
+        createMapArray = function() {
+            map = [];
+            for(let x = 0; x < GRID_WIDTH; x++) {
+                map.push([]);
+                for(let y = 0; y < GRID_HEIGHT; y++) {
+                    map[x].push(FLOOR);
+                }
+            }
+        }
+
+        draw = function(searchedTiles = {}) {
+            let tileWidth = context.canvas.width / map.length;
+            let tileHeight = context.canvas.height / map[0].length;
+            //clear context
+            context.fillStyle = '#FFFFFF';
+            context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+            //draw tiles
+            for(let x = 0; x < map.length; x++) {
+                for(let y = 0; y < map[x].length; y++) {
+                    let pixelX = x * tileWidth;
+                    let pixelY = y * tileHeight;
+                    //tile color
+                    context.fillStyle = getMapTileColor(map[x][y]);
+                    context.fillRect(pixelX,pixelY, tileWidth, tileHeight);
+                    //tile outline
+                    context.strokeStyle = '#000000'
+                    context.beginPath();
+                    context.rect(pixelX,pixelY, tileWidth, tileHeight);
+                    context.stroke();
+                }
+            }
+
+            for(const property in searchedTiles) {
+                context.fillStyle = getMapTileColor(searchedTiles[property].goal ? GOAL : WALKED);
+                let pixelX = searchedTiles[property].x * tileWidth;
+                let pixelY = searchedTiles[property].y * tileHeight;
+                context.fillRect(pixelX, pixelY, tileWidth, tileHeight);
+            }
+        }
+
+        getMapTileColor = function(value) {
+            let returnValue = '#FFFFFF';
+            switch(value){
+                case START:
+                    returnValue = '#03fc88';
+                    break;
+                case END:
+                    returnValue = '#fcb103';
+                    break;
+                case WALKED:
+                    returnValue = '#08c9c6'
+                    break;
+                case GOAL:
+                    returnValue = '#89c908';
+                    break;
+                case WALL:
+                    returnValue = '#c9080e';
+                    break;
+            }
+
+            return returnValue;
+        }
+
+        clearMap = function(tileType = -1) {
+            for(let x = 0; x < map.length; x++) {
+                for(let y = 0; y < map[x].length; y++) {
+                    //if input is -1 clear all
+                    if (tileType === -1) {
+                        map[x][y] = FLOOR;
+                    } else if (tileType === map[x][y]) {
+                        //otherwise clear just the input tileType
+                        map[x][y] = FLOOR;
+                    }
+                }
+            }
+        }
+
+        mapContainsStartAndEnd = function() {
+            return findPoint(START) != undefined && findPoint(END) != undefined;
+        }
+
+        findPoint = function(tileType) {
+            for(let x = 0; x < map.length; x++) {
+                for(let y = 0; y < map[x].length; y++) {
+                    if (map[x][y] === tileType) {
+                        return { x: x, y: y };
+                    }
+                }
+            }
+
+            return undefined;
+        }
+
+        aStar = function(location, end, searchedLocations) {
+            //if we reached our destination
+            if (location.x === end.x && location.y === end.y) {
+                return false;
+            }
+
+            //loop AStar till we hit false aka reach our destination
+            let shortestLocation = undefined;
+            do {
+                let shortestPath = 999999;
+                //loop through surrounding tiles at current location and find the shortest path to our destination
+                //determine min max search locations to see edge of maps 
+                let minX = location.x - 1 > -1 ? location.x - 1 : 0;
+                let maxX = location.x + 1 < map.length ? location.x + 1 : location.x;
+                let minY = location.y - 1 > -1 ? location.y - 1 : 0;
+                let maxY = location.y + 1 < map[0].length ? location.y + 1 : location.y;
+                for(let x = minX; x <= maxX; x++) {
+                    for(let y = minY; y <= maxY; y++) {
+                        //make sure we're not checking the same locations we have already checked
+                        //and make sure the tile is passable
+                        let searchedLocation = searchedLocations[`${x},${y}`];
+                        if ((!searchedLocation || (!searchedLocation.searched)) && map[x][y] != WALL) {
+                            //if this is the shortest distance we've found so far then save it
+                            let distanceToEnd = Math.sqrt(Math.pow(end.x - x, 2) + Math.pow(end.y - y, 2));
+                            if (shortestPath > distanceToEnd) {
+                                shortestPath = distanceToEnd;
+                                shortestLocation = { x: x, y: y };
+                            }
+                            searchedLocations[`${x},${y}`] = { searched: false, goal: false };
+                        }
+                    }
+                }
+
+                //if no locations are able to be found to move to
+                if (shortestPath === 999999) {
+                    searchedLocations[`${location.x},${location.y}`].goal = false;
+                    return true;
+                }
+
+                //set the next shortestLocation tile as walked
+                searchedLocations[`${shortestLocation.x},${shortestLocation.y}`] = { x : shortestLocation.x, y : shortestLocation.y, searched : true, goal: true };
+
+            } while(aStar(shortestLocation, end, searchedLocations))
+
+            return false;
+        }
+
+        //document event listeners
+
+        let wallBtn = document.getElementById('wallBtn');
+        wallBtn.onclick = function() {
+            placementMode = WALL;
+        }
+        let floorBtn = document.getElementById('floorBtn');
+        floorBtn.onclick = function() {
+            placementMode = FLOOR;
+        }
+        let startBtn = document.getElementById('startBtn');
+        startBtn.onclick = function() {
+            placementMode = START;
+        }
+        let endBtn = document.getElementById('endBtn');
+        endBtn.onclick = function() {
+            placementMode = END;
+        }
+        let calculateBtn = document.getElementById('calculateBtn');
+        calculateBtn.onclick = function() {
+            if (mapContainsStartAndEnd()) {
+                let searchedTiles = {};
+                aStar(findPoint(START), findPoint(END), searchedTiles);
+                draw(searchedTiles);
+            } else {
+                console.error("Map does not contain a start and end.");
+            }
+        }
+
+        resizeCanvas = function(width, height) {
+            canvas.width = width;
+            canvas.height = height;
+
+            let aspectRatio = canvas.width / canvas.height;
+            width = window.innerWidth;
+            if (window.innerWidth / aspectRatio > window.innerHeight) {
+                width = window.innerHeight * aspectRatio;
+            }
+            canvas.style.width = width + "px";
+            canvas.style.height = width / aspectRatio + "px";
+        }
+
+        window.onload = function() {
+            createMapArray();
+            resizeCanvas(800, 450);
+            draw();
+        }
+
+        window.onresize = function() {
+            resizeCanvas(800, 450);
+            draw();
+        }
+
+        canvas.addEventListener('mousedown', function(event) {
+            let canvasX = event.clientX / canvas.clientWidth * canvas.width;
+            let canvasY = event.clientY / canvas.clientHeight * canvas.height;
+            let tileWidth = context.canvas.width / map.length;
+            let tileHeight = context.canvas.height / map[0].length;
+            let tileX = Math.floor(canvasX / tileWidth);
+            let tileY = Math.floor(canvasY / tileHeight);
+
+            //only one start and end
+            if (placementMode === START || placementMode === END) {
+                clearMap(placementMode);
+            }
+
+            map[tileX][tileY] = placementMode;
+            draw();
+        })
+    </script>
+</html>
