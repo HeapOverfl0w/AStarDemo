@@ -176,7 +176,7 @@
                     let path = [];
                     let current = currentNode;
                     while (current) {
-                        path.push(current);
+                        path.unshift(current);
                         current = current.parent;
                     }
                     return path;
